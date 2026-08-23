@@ -12,6 +12,8 @@ import { TokenService, TokenPair } from './services/token.service';
 import { TwoFactorService } from './services/two-factor.service';
 import { AuthMailerService } from './services/auth-mailer.service';
 import { AuthenticationException } from '../common/exceptions';
+import { TracingService } from '../common/tracing/tracing.service';
+import { trace, SpanStatusCode } from '@opentelemetry/api';
 
 const SALT_ROUNDS = parseInt(process.env.BCRYPT_SALT_ROUNDS, 10) || 10;
 const EMAIL_VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000;
@@ -20,6 +22,7 @@ const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
+  private readonly tracer = trace.getTracer('lumina-auth-service');
 
   constructor(
     @InjectRepository(User)
@@ -27,34 +30,84 @@ export class AuthService {
     private readonly tokenService: TokenService,
     private readonly twoFactorService: TwoFactorService,
     private readonly mailerService: AuthMailerService,
+    private readonly tracingService: TracingService,
   ) {}
 
   async register(dto: RegisterDto): Promise<{ id: string; email: string } > {
-    const existing = await this.userRepository.findOne({ where: { email: dto.email } });
+    return this.tracer.startActiveSpan('auth.register', async (span) => {
+      try {
+        span.setAttribute('auth.email', dto.email);
+        span.setAttribute('auth.role', dto.role);
 
-    if (existing) {
-      throw AuthenticationException.emailAlreadyRegistered();
-    }
+        // Check existing user sub-span
+        const existing = await this.tracer.startActiveSpan('auth.check_existing_user', async (checkSpan) => {
+          const existing = await this.userRepository.findOne({ where: { email: dto.email } });
+          checkSpan.setAttribute('user.exists', !!existing);
+          checkSpan.end();
+          return existing;
+        });
 
-    const password_hash = await bcrypt.hash(dto.password, SALT_ROUNDS);
-    const { token, hash, expiresAt } = this.createOpaqueToken(EMAIL_VERIFICATION_TTL_MS);
+        if (existing) {
+          span.setStatus({
+            code: SpanStatusCode.ERROR,
+            message: 'Email already registered',
+          });
+          throw AuthenticationException.emailAlreadyRegistered();
+        }
 
-    const user = await this.userRepository.save(
-      this.userRepository.create({
-        email: dto.email,
-        password_hash,
-        full_name: dto.full_name,
-        role: dto.role === Role.MERCHANT ? Role.MERCHANT : Role.CUSTOMER,
-        email_verification_token_hash: hash,
-        email_verification_expires_at: expiresAt,
-      }),
-    );
+        // Password hashing sub-span
+        const password_hash = await this.tracer.startActiveSpan('auth.hash_password', async (hashSpan) => {
+          const hash = await bcrypt.hash(dto.password, SALT_ROUNDS);
+          hashSpan.end();
+          return hash;
+        });
 
-    this.mailerService
-      .sendVerificationEmail(user.email, token)
-      .catch((error) => this.logger.error(`Failed to send verification email: ${error.message}`));
+        const { token, hash, expiresAt } = this.createOpaqueToken(EMAIL_VERIFICATION_TTL_MS);
 
-    return { id: user.id, email: user.email };
+        // User creation sub-span
+        const user = await this.tracer.startActiveSpan('auth.create_user', async (createSpan) => {
+          const user = await this.userRepository.save(
+            this.userRepository.create({
+              email: dto.email,
+              password_hash,
+              full_name: dto.full_name,
+              role: dto.role === Role.MERCHANT ? Role.MERCHANT : Role.CUSTOMER,
+              email_verification_token_hash: hash,
+              email_verification_expires_at: expiresAt,
+            }),
+          );
+          createSpan.setAttribute('user.id', user.id);
+          createSpan.end();
+          return user;
+        });
+
+        span.setAttribute('user.id', user.id);
+
+        // Email sending sub-span
+        await this.tracer.startActiveSpan('auth.send_verification_email', async (emailSpan) => {
+          try {
+            await this.mailerService.sendVerificationEmail(user.email, token);
+            emailSpan.setAttribute('email.sent', true);
+          } catch (error) {
+            emailSpan.recordException(error as Error);
+            emailSpan.setAttribute('email.sent', false);
+          } finally {
+            emailSpan.end();
+          }
+        });
+
+        return { id: user.id, email: user.email };
+      } catch (error) {
+        span.recordException(error as Error);
+        span.setStatus({
+          code: SpanStatusCode.ERROR,
+          message: (error as Error).message,
+        });
+        throw error;
+      } finally {
+        span.end();
+      }
+    });
   }
 
   async verifyEmail(rawToken: string): Promise<void> {
