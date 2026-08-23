@@ -3,6 +3,7 @@ import 'winston-daily-rotate-file';
 import { utilities as nestWinstonModuleUtilities } from 'nest-winston';
 import { RequestContext } from './request-context';
 import { redact } from './redact.util';
+import { trace } from '@opentelemetry/api';
 
 const isProduction = process.env.NODE_ENV === 'production';
 const logLevel = process.env.LOG_LEVEL || (isProduction ? 'info' : 'debug');
@@ -16,10 +17,21 @@ const withRequestId = winston.format((info) => {
   return info;
 });
 
+const withTraceContext = winston.format((info) => {
+  const activeSpan = trace.getActiveSpan();
+  if (activeSpan) {
+    const spanContext = activeSpan.spanContext();
+    info.traceId = spanContext.traceId;
+    info.spanId = spanContext.spanId;
+  }
+  return info;
+});
+
 const redactSensitiveData = winston.format((info) => redact(info));
 
 const jsonFileFormat = winston.format.combine(
   withRequestId(),
+  withTraceContext(),
   redactSensitiveData(),
   winston.format.timestamp(),
   winston.format.errors({ stack: true }),
@@ -28,6 +40,7 @@ const jsonFileFormat = winston.format.combine(
 
 const consoleFormat = winston.format.combine(
   withRequestId(),
+  withTraceContext(),
   redactSensitiveData(),
   winston.format.timestamp(),
   winston.format.errors({ stack: true }),
