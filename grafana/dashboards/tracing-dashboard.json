@@ -1,0 +1,136 @@
+{
+  "dashboard": {
+    "title": "Lumina Distributed Tracing",
+    "uid": "lumina-tracing",
+    "tags": ["lumina", "tracing", "jaeger"],
+    "timezone": "browser",
+    "refresh": "30s",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Trace Throughput",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(spans_total[5m])",
+            "legendFormat": "{{service_name}}"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "ops"
+          }
+        }
+      },
+      {
+        "id": 2,
+        "title": "Span Latency (p95)",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(span_duration_milliseconds_bucket[5m]))",
+            "legendFormat": "{{operation_name}}"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "ms"
+          }
+        }
+      },
+      {
+        "id": 3,
+        "title": "Span Error Rate",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(span_errors_total[5m]) / rate(spans_total[5m])",
+            "legendFormat": "{{service_name}}"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit",
+            "max": 1,
+            "min": 0
+          }
+        }
+      },
+      {
+        "id": 4,
+        "title": "Service Dependencies",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "sum(rate(span_calls_total[5m])) by (caller_service, callee_service)",
+            "legendFormat": "{{caller_service}} -> {{callee_service}}"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "title": "Active Traces",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "sum(increase(spans_total[1m]))"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short"
+          }
+        }
+      },
+      {
+        "id": 6,
+        "title": "Average Span Duration",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "avg(span_duration_milliseconds) by (operation_name)",
+            "legendFormat": "{{operation_name}}"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "ms"
+          }
+        }
+      },
+      {
+        "id": 7,
+        "title": "Trace Sampling Rate",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "rate(sampled_spans_total[5m]) / rate(spans_total[5m])"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit",
+            "max": 1,
+            "min": 0
+          }
+        }
+      },
+      {
+        "id": 8,
+        "title": "Top Slow Operations",
+        "type": "table",
+        "targets": [
+          {
+            "expr": "topk(10, avg(span_duration_milliseconds) by (operation_name))",
+            "format": "table"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "ms"
+          }
+        }
+      }
+    ]
+  }
+}

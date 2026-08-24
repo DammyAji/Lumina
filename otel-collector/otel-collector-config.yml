@@ -1,0 +1,44 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 5s
+    max_batch_size: 1000
+    max_export_batch_size: 512
+    export_timeout: 30s
+
+  attributes:
+    actions:
+      - key: environment
+        value: ${OTEL_ENVIRONMENT:-development}
+        action: insert
+      - key: service.version
+        value: ${OTEL_SERVICE_VERSION:-1.0.0}
+        action: insert
+
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 512
+    spike_limit_mib: 128
+
+exporters:
+  jaeger:
+    endpoint: jaeger:14250
+    tls:
+      insecure: true
+
+  logging:
+    loglevel: ${OTEL_LOG_LEVEL:-info}
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch, attributes]
+      exporters: [jaeger, logging]
