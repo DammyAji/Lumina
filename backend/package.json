@@ -10,8 +10,7 @@
     "start:prod": "node dist/main.js",
     "test": "jest",
     "test:watch": "jest --watch",
-    "test:cov": "jest --coverage",
-    "lint": "eslint . --ext .ts"
+    "test:cov": "jest --coverage"
   },
   "keywords": [],
   "author": "",
@@ -79,9 +78,6 @@
     "@types/passport-jwt": "^4.0.1",
     "@types/speakeasy": "^2.0.10",
     "@types/stripe": "^8.0.0",
-    "@typescript-eslint/eslint-plugin": "^7.0.0",
-    "@typescript-eslint/parser": "^7.0.0",
-    "eslint": "^8.57.0",
     "jest": "^29.7.0",
     "ts-jest": "^29.2.5",
     "ts-node": "^10.9.2"
