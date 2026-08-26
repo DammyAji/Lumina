@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
 
 export enum RateLimitAlgorithm {
   TOKEN_BUCKET = 'token-bucket',
@@ -33,6 +33,10 @@ export interface RateLimitActions {
 export class RateLimitPolicyEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
+
+  @Index()
+  @Column({ type: 'uuid', nullable: true })
+  tenant_id: string;
 
   @Column({ type: 'varchar', length: 255 })
   name: string;

@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { TenantService } from './tenant.service';
 import { TenantController } from './tenant.controller';
 import { TenantMiddleware } from './middleware/tenant.middleware';
+import { TenantGuard, TenantRoleGuard } from './guards/tenant.guard';
 import { TenantOnboardingService } from './services/tenant-onboarding.service';
 import { TenantMigrationService } from './services/tenant-migration.service';
 import { TenantBackupService } from './services/tenant-backup.service';
@@ -19,13 +20,17 @@ import { TenantAudit } from './entities/tenant-audit.entity';
   providers: [
     TenantService, 
     TenantMiddleware, 
+    TenantGuard,
+    TenantRoleGuard,
     TenantOnboardingService,
     TenantMigrationService,
     TenantBackupService,
   ],
   exports: [
     TenantService, 
-    TenantMiddleware, 
+    TenantMiddleware,
+    TenantGuard,
+    TenantRoleGuard, 
     TenantOnboardingService,
     TenantMigrationService,
     TenantBackupService,

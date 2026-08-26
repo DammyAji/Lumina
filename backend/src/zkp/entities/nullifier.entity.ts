@@ -6,6 +6,10 @@ export class Nullifier {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
+  @Index()
+  @Column({ name: 'tenant_id', type: 'uuid', nullable: true })
+  tenantId: string;
+
   @Column({ name: 'nullifier_hash', length: 64, unique: true })
   nullifierHash: string;
 

@@ -1,5 +1,7 @@
 import { Injectable, NestMiddleware, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { DataSource } from 'typeorm';
 import { TenantService } from '../tenant.service';
 import { Tenant } from '../entities/tenant.entity';
 
@@ -14,7 +16,10 @@ declare global {
 
 @Injectable()
 export class TenantMiddleware implements NestMiddleware {
-  constructor(private readonly tenantService: TenantService) {}
+  constructor(
+    private readonly tenantService: TenantService,
+    @InjectDataSource() private readonly dataSource: DataSource,
+  ) {}
 
   async use(req: Request, res: Response, next: NextFunction): Promise<void> {
     const tenant = await this.identifyTenant(req);
@@ -30,9 +35,8 @@ export class TenantMiddleware implements NestMiddleware {
     req.tenant = tenant;
     req.tenantId = tenant.id;
 
-    // Set PostgreSQL session variable for RLS (will be implemented in database)
-    // This requires the DataSource to be injected, which we'll add later
-    // await this.dataSource.query(`SET app.current_tenant_id = '${tenant.id}'`);
+    // Set PostgreSQL session variable for RLS
+    await this.dataSource.query(`SET app.current_tenant_id = '${tenant.id}'`);
 
     next();
   }
