@@ -1,0 +1,20 @@
+# Standalone crate: `[workspace]` keeps it out of the Soroban workspace at
+# ../../Cargo.toml, whose members target wasm32-unknown-unknown.
+[workspace]
+
+[package]
+name = "lumina-htlc-solana"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "lib"]
+doctest = false
+
+[dependencies]
+solana-program = "1.18"
+spl-token = { version = "4.0", features = ["no-entrypoint"] }
+
+[features]
+no-entrypoint = []
