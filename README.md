@@ -255,7 +255,13 @@ POST   /api/swaps/initiate      → start a cross-chain atomic swap
 GET    /api/swaps/:id           → get swap status
 POST   /api/swaps/:id/refund    → trigger a refund after timeout
 GET    /api/swaps/supported-chains → list supported source networks
+WS     /ws                      → real-time payment event stream (Socket.IO)
+GET    /ws/channels             → list WebSocket channels
+POST   /ws/authenticate         → issue short-lived WebSocket token
 ```
+
+Real-time payment events (replacing REST polling) are documented in
+[`docs/WEBSOCKETS.md`](docs/WEBSOCKETS.md).
 
 Cross-chain swaps accept payments on Ethereum, Polygon, Bitcoin, and Solana and
 settle them to merchants as USDC on Stellar via Hash Time-Locked Contracts — see

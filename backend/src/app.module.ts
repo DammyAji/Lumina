@@ -25,6 +25,7 @@ import { MetricsService } from './common/metrics/metrics.service';
 import { TypeOrmMetricsLogger } from './common/metrics/typeorm-metrics.logger';
 import { DbPoolMetricsService } from './common/metrics/db-pool-metrics.service';
 import { TracingModule } from './common/tracing/tracing.module';
+import { WebsocketModule } from './websocket/websocket.module';
 
 @Module({
   imports: [
@@ -70,6 +71,7 @@ import { TracingModule } from './common/tracing/tracing.module';
     NotificationServiceModule,
     ConversionEngineModule,
     CrossChainSwapModule,
+    WebsocketModule,
   ],
   providers: [DbPoolMetricsService],
 })
