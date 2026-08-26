@@ -1,10 +1,13 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import { LessThanOrEqual, Repository } from 'typeorm';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import * as crypto from 'crypto';
 import * as http from 'http';
 import * as https from 'https';
+import Redis from 'ioredis';
 import { Webhook } from '../entities/webhook.entity';
 import { WebhookDelivery, WebhookDeliveryStatus } from '../entities/webhook-delivery.entity';
 import { WebhookDLQ } from '../entities/webhook-dlq.entity';
@@ -15,6 +18,7 @@ import { NotificationEvent } from '../events/notification-event.enum';
 import { MetricsService } from '../../common/metrics/metrics.service';
 import { EventFilterService } from '../services/event-filter.service';
 import { WebhookSignatureService } from '../services/webhook-signature.service';
+import { WEBHOOK_DELIVERY_QUEUE, WebhookDeliveryJobData } from './webhook-queue.processor';
 
 export interface RetryConfig {
   maxAttempts: number;
@@ -39,13 +43,13 @@ export function calculateRetryDelay(attempt: number, config: RetryConfig = defau
 
 export const SIGNATURE_HEADER = 'x-lumina-signature';
 export const TIMESTAMP_HEADER = 'x-lumina-timestamp';
-const WEBHOOK_DELIVERY_QUEUE = 'webhook_delivery';
 
 @Injectable()
 export class WebhookService {
   private readonly logger = new Logger(WebhookService.name);
   private readonly httpAgent: http.Agent;
   private readonly httpsAgent: https.Agent;
+  private readonly redis: Redis;
 
   constructor(
     @InjectRepository(Webhook)
@@ -54,12 +58,18 @@ export class WebhookService {
     private deliveryRepository: Repository<WebhookDelivery>,
     @InjectRepository(WebhookDLQ)
     private dlqRepository: Repository<WebhookDLQ>,
+    @InjectQueue(WEBHOOK_DELIVERY_QUEUE)
+    private webhookQueue: Queue<WebhookDeliveryJobData>,
     private metricsService: MetricsService,
     private eventFilterService: EventFilterService,
     private signatureService: WebhookSignatureService,
   ) {
     this.httpAgent = new http.Agent({ keepAlive: true, maxSockets: 100 });
     this.httpsAgent = new https.Agent({ keepAlive: true, maxSockets: 100 });
+    this.redis = new Redis({
+      host: process.env.REDIS_HOST || 'localhost',
+      port: parseInt(process.env.REDIS_PORT || '6379', 10),
+    });
   }
 
   async registerWebhook(dto: RegisterWebhookDto): Promise<Webhook> {
@@ -139,6 +149,25 @@ export class WebhookService {
     );
 
     for (const webhook of matchingWebhooks) {
+      // Check payload size limit (1MB default)
+      const payloadSize = JSON.stringify(data).length;
+      const MAX_PAYLOAD_SIZE = 1024 * 1024; // 1MB
+      if (payloadSize > MAX_PAYLOAD_SIZE) {
+        this.logger.error(`Payload size ${payloadSize} exceeds limit ${MAX_PAYLOAD_SIZE} for webhook ${webhook.id}`);
+        continue;
+      }
+
+      // Check rate limit per endpoint (100 requests per minute) using Redis
+      const rateLimitKey = `webhook_rate:${webhook.id}`;
+      const currentCount = await this.redis.incr(rateLimitKey);
+      if (currentCount === 1) {
+        await this.redis.expire(rateLimitKey, 60); // 60 second window
+      }
+      if (currentCount > 100) {
+        this.logger.warn(`Rate limit exceeded for webhook ${webhook.id}`);
+        continue;
+      }
+
       const eventId = `evt_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
       const delivery = await this.deliveryRepository.save(
         this.deliveryRepository.create({
@@ -150,7 +179,22 @@ export class WebhookService {
         }),
       );
 
-      await this.attemptDelivery(webhook, delivery);
+      // Add to BullMQ queue for processing
+      await this.webhookQueue.add(
+        'webhook-delivery',
+        {
+          webhookId: webhook.id,
+          deliveryId: delivery.id,
+          event: String(event),
+          payload: data,
+          attempt: 1,
+        } as WebhookDeliveryJobData,
+        {
+          jobId: delivery.id,
+          removeOnComplete: 1000,
+          removeOnFail: 5000,
+        },
+      );
     }
   }
 
@@ -310,6 +354,11 @@ export class WebhookService {
     pending_retries: number;
     dlq_count: number;
     success_rate: number;
+    avg_latency_ms: number;
+    p95_latency_ms: number;
+    p99_latency_ms: number;
+    deliveries_by_event: Record<string, number>;
+    deliveries_by_status: Record<string, number>;
   }> {
     let webhooks: Webhook[];
     if (merchantId) {
@@ -332,6 +381,11 @@ export class WebhookService {
         pending_retries: 0,
         dlq_count: 0,
         success_rate: 100,
+        avg_latency_ms: 0,
+        p95_latency_ms: 0,
+        p99_latency_ms: 0,
+        deliveries_by_event: {},
+        deliveries_by_status: {},
       };
     }
 
@@ -350,6 +404,35 @@ export class WebhookService {
 
     const success_rate = total_deliveries > 0 ? Number(((successful_deliveries / total_deliveries) * 100).toFixed(2)) : 100;
 
+    // Calculate latency metrics
+    const successfulDeliveryTimes = deliveries
+      .filter((d) => d.status === WebhookDeliveryStatus.SUCCESS && d.delivered_at && d.created_at)
+      .map((d) => d.delivered_at!.getTime() - d.created_at.getTime());
+
+    const avg_latency_ms = successfulDeliveryTimes.length > 0
+      ? Number((successfulDeliveryTimes.reduce((a, b) => a + b, 0) / successfulDeliveryTimes.length).toFixed(2))
+      : 0;
+
+    const sortedTimes = [...successfulDeliveryTimes].sort((a, b) => a - b);
+    const p95_latency_ms = sortedTimes.length > 0
+      ? Number(sortedTimes[Math.floor(sortedTimes.length * 0.95)]?.toFixed(2) || 0)
+      : 0;
+    const p99_latency_ms = sortedTimes.length > 0
+      ? Number(sortedTimes[Math.floor(sortedTimes.length * 0.99)]?.toFixed(2) || 0)
+      : 0;
+
+    // Group by event type
+    const deliveries_by_event: Record<string, number> = {};
+    deliveries.forEach((d) => {
+      deliveries_by_event[d.event] = (deliveries_by_event[d.event] || 0) + 1;
+    });
+
+    // Group by status
+    const deliveries_by_status: Record<string, number> = {};
+    deliveries.forEach((d) => {
+      deliveries_by_status[d.status] = (deliveries_by_status[d.status] || 0) + 1;
+    });
+
     return {
       total_webhooks,
       active_webhooks,
@@ -359,31 +442,18 @@ export class WebhookService {
       pending_retries,
       dlq_count,
       success_rate,
+      avg_latency_ms,
+      p95_latency_ms,
+      p99_latency_ms,
+      deliveries_by_event,
+      deliveries_by_status,
     };
   }
 
   @Cron(CronExpression.EVERY_MINUTE)
-  async retryFailedDeliveries(): Promise<void> {
-    const pending = await this.deliveryRepository.find({
-      where: {
-        status: WebhookDeliveryStatus.RETRYING,
-        next_retry_at: LessThanOrEqual(new Date()),
-      },
-    });
-
-    this.metricsService.setQueueDepth(WEBHOOK_DELIVERY_QUEUE, pending.length);
-
-    for (const delivery of pending) {
-      const webhook = await this.webhookRepository.findOne({
-        where: { id: delivery.webhook_id },
-      });
-
-      if (!webhook || !webhook.is_active) {
-        continue;
-      }
-
-      await this.attemptDelivery(webhook, delivery);
-    }
+  async monitorQueueHealth(): Promise<void> {
+    const queueStats = await this.webhookQueue.getJobCounts();
+    this.metricsService.setQueueDepth(WEBHOOK_DELIVERY_QUEUE, queueStats.waiting + queueStats.active);
   }
 
   private async attemptDelivery(webhook: Webhook, delivery: WebhookDelivery): Promise<void> {
