@@ -58,6 +58,7 @@ Backend Gateway (NestJS)
         ├── Payment Service       → create, track, settle payments
         ├── Ramp Service          → fiat on/off ramp processing
         ├── Conversion Engine     → BTC/ETH → USDC conversion
+        ├── Cross-Chain Swaps     → HTLC swaps from ETH/Polygon/BTC/Solana
         ├── Blockchain Listener   → watch Stellar transactions
         └── Notification Service → webhooks, email, alerts
         │
@@ -250,7 +251,15 @@ POST   /api/ramp/onramp         → initiate on-ramp
 POST   /api/ramp/offramp        → initiate off-ramp
 POST   /api/webhooks/register   → register webhook URL
 GET    /api/merchants/balance   → get merchant balance
+POST   /api/swaps/initiate      → start a cross-chain atomic swap
+GET    /api/swaps/:id           → get swap status
+POST   /api/swaps/:id/refund    → trigger a refund after timeout
+GET    /api/swaps/supported-chains → list supported source networks
 ```
+
+Cross-chain swaps accept payments on Ethereum, Polygon, Bitcoin, and Solana and
+settle them to merchants as USDC on Stellar via Hash Time-Locked Contracts — see
+[`docs/CROSS_CHAIN_SWAPS.md`](docs/CROSS_CHAIN_SWAPS.md).
 
 ---
 
