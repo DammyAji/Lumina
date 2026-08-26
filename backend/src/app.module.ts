@@ -7,6 +7,7 @@ import { ApiGatewayModule } from './api-gateway/api-gateway.module';
 import { BlockchainListenerModule } from './blockchain-listener/blockchain-listener.module';
 import { NotificationServiceModule } from './notification-service/notification-service.module';
 import { ConversionEngineModule } from './conversion-engine/conversion-engine.module';
+import { CrossChainSwapModule } from './cross-chain-swap/cross-chain-swap.module';
 import { CommonModule } from './common/common.module';
 import { AuthModule } from './auth/auth.module';
 import { RampModule } from './ramp-service/ramp-service.module';
@@ -65,6 +66,7 @@ import { TracingModule } from './common/tracing/tracing.module';
     BlockchainListenerModule,
     NotificationServiceModule,
     ConversionEngineModule,
+    CrossChainSwapModule,
   ],
   providers: [DbPoolMetricsService],
 })
