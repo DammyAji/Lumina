@@ -13,6 +13,10 @@ export class ZKPProof {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
+  @Index()
+  @Column({ name: 'tenant_id', type: 'uuid', nullable: true })
+  tenantId: string;
+
   @Column({ name: 'transaction_id' })
   transactionId: string;
 

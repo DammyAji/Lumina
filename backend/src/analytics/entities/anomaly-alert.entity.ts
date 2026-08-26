@@ -31,6 +31,10 @@ export class AnomalyAlert {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
+  @Index()
+  @Column({ name: 'tenant_id', type: 'uuid', nullable: true })
+  tenantId: string;
+
   @Column({ name: 'merchant_id', type: 'uuid' })
   merchantId: string;
 

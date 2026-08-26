@@ -7,6 +7,10 @@ export class LedgerEntry {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
+  @Index()
+  @Column({ nullable: true })
+  tenant_id: string;
+
   @Column({ unique: true, length: 255 })
   entryId: string;
 

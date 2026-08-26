@@ -6,6 +6,10 @@ export class RuleVersion {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
+  @Index()
+  @Column({ nullable: true })
+  tenant_id: string;
+
   @Column()
   rule_id: string;
 

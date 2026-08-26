@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
 
 export enum RampOperationType {
   ON_RAMP = 'on_ramp',
@@ -39,6 +39,10 @@ export enum Provider {
 export class RampOperation {
   @PrimaryGeneratedColumn('uuid')
   id: string;
+
+  @Index()
+  @Column({ nullable: true })
+  tenant_id: string;
 
   @Column({ unique: true })
   operation_id: string;

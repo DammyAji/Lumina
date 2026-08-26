@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
 
 export enum KycStatus {
   PENDING = 'pending',
@@ -19,6 +19,10 @@ export enum KycProvider {
 export class KycRecord {
   @PrimaryGeneratedColumn('uuid')
   id: string;
+
+  @Index()
+  @Column({ nullable: true })
+  tenant_id: string;
 
   @Column({ unique: true })
   kyc_id: string;

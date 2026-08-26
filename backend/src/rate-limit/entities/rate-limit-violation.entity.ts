@@ -5,6 +5,10 @@ export class RateLimitViolationEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
+  @Index()
+  @Column({ type: 'uuid', nullable: true })
+  tenant_id: string;
+
   @Column({ type: 'uuid', nullable: true })
   @Index()
   userId: string;
