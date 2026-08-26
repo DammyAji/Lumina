@@ -7,6 +7,7 @@ import { Merchant } from './entities/merchant.entity';
 import { ConversionEngineService } from '../conversion-engine/conversion-engine.service';
 import { ConversionAsset } from '../conversion-engine/asset.enum';
 import { MetricsService } from '../common/metrics/metrics.service';
+import { EventPublisherService } from '../websocket/services/event-publisher.service';
 
 describe('PaymentService', () => {
   let service: PaymentService;
@@ -14,6 +15,7 @@ describe('PaymentService', () => {
   let merchantRepository: { findOne: jest.Mock };
   let conversionEngineService: { executeConversion: jest.Mock };
   let metricsService: { recordPayment: jest.Mock };
+  let eventPublisher: { publish: jest.Mock };
 
   beforeEach(async () => {
     paymentRepository = {
@@ -26,6 +28,7 @@ describe('PaymentService', () => {
       executeConversion: jest.fn().mockResolvedValue(undefined),
     };
     metricsService = { recordPayment: jest.fn() };
+    eventPublisher = { publish: jest.fn().mockResolvedValue({ event_id: 'e1' }) };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -34,6 +37,7 @@ describe('PaymentService', () => {
         { provide: getRepositoryToken(Merchant), useValue: merchantRepository },
         { provide: ConversionEngineService, useValue: conversionEngineService },
         { provide: MetricsService, useValue: metricsService },
+        { provide: EventPublisherService, useValue: eventPublisher },
       ],
     }).compile();
 
@@ -53,7 +57,7 @@ describe('PaymentService', () => {
   });
 
   it('triggers a conversion for a non-USDC payment', async () => {
-    merchantRepository.findOne.mockResolvedValue({ stellar_address: 'merchant-1' });
+    merchantRepository.findOne.mockResolvedValue({ id: 'm1', stellar_address: 'merchant-1' });
 
     const payment = await service.create({
       merchant_address: 'merchant-1',
@@ -68,10 +72,11 @@ describe('PaymentService', () => {
       PaymentCurrency.BTC,
       ConversionAsset.USDC,
     );
+    expect(eventPublisher.publish).toHaveBeenCalled();
   });
 
   it('does not trigger a conversion for a USDC payment', async () => {
-    merchantRepository.findOne.mockResolvedValue({ stellar_address: 'merchant-1' });
+    merchantRepository.findOne.mockResolvedValue({ id: 'm1', stellar_address: 'merchant-1' });
 
     await service.create({
       merchant_address: 'merchant-1',
@@ -79,6 +84,9 @@ describe('PaymentService', () => {
       currency: PaymentCurrency.USDC,
     });
 
+    await new Promise((resolve) => setImmediate(resolve));
+
     expect(conversionEngineService.executeConversion).not.toHaveBeenCalled();
+    expect(eventPublisher.publish).toHaveBeenCalled();
   });
 });

@@ -56,6 +56,13 @@ export class MetricsService {
   readonly capacityUtilization: client.Gauge<string>;
   readonly capacityForecastHours: client.Gauge<string>;
 
+  // WebSocket metrics
+  readonly websocketConnectionsActive: client.Gauge<string>;
+  readonly websocketEventsTotal: client.Counter<string>;
+  readonly websocketEventLatency: client.Histogram<string>;
+  readonly websocketConnectionErrorsTotal: client.Counter<string>;
+  readonly websocketEventsDeliveredTotal: client.Counter<string>;
+
   constructor() {
     this.registry = new client.Registry();
     this.registry.setDefaultLabels({ service: 'lumina-backend' });
@@ -259,6 +266,41 @@ export class MetricsService {
       labelNames: ['resource'],
       registers: [this.registry],
     });
+
+    this.websocketConnectionsActive = new client.Gauge({
+      name: 'websocket_connections_active',
+      help: 'Number of active WebSocket connections',
+      registers: [this.registry],
+    });
+
+    this.websocketEventsTotal = new client.Counter({
+      name: 'websocket_events_total',
+      help: 'Total WebSocket events published',
+      labelNames: ['event_type'],
+      registers: [this.registry],
+    });
+
+    this.websocketEventLatency = new client.Histogram({
+      name: 'websocket_event_publish_duration_seconds',
+      help: 'Latency of publishing a WebSocket event',
+      labelNames: ['event_type'],
+      buckets: [0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1],
+      registers: [this.registry],
+    });
+
+    this.websocketConnectionErrorsTotal = new client.Counter({
+      name: 'websocket_connection_errors_total',
+      help: 'WebSocket connection and message errors',
+      labelNames: ['reason'],
+      registers: [this.registry],
+    });
+
+    this.websocketEventsDeliveredTotal = new client.Counter({
+      name: 'websocket_events_delivered_total',
+      help: 'WebSocket events delivered to sockets',
+      labelNames: ['event_type'],
+      registers: [this.registry],
+    });
   }
 
   /** Times an external service call and records success/error counters + latency. */
@@ -313,6 +355,25 @@ export class MetricsService {
   recordBlockchainTx(network: string, operation: string, status: string, durationSeconds: number): void {
     this.blockchainTxDuration.observe({ network, operation }, durationSeconds);
     this.blockchainTxTotal.inc({ network, operation, status });
+  }
+
+  setWebSocketConnections(count: number): void {
+    this.websocketConnectionsActive.set(count);
+  }
+
+  recordWebSocketEvent(eventType: string, durationSeconds: number): void {
+    this.websocketEventsTotal.inc({ event_type: eventType });
+    this.websocketEventLatency.observe({ event_type: eventType }, durationSeconds);
+  }
+
+  recordWebSocketConnectionError(reason: string): void {
+    this.websocketConnectionErrorsTotal.inc({ reason });
+  }
+
+  recordWebSocketEventDelivered(eventType: string, recipients: number): void {
+    if (recipients > 0) {
+      this.websocketEventsDeliveredTotal.inc({ event_type: eventType }, recipients);
+    }
   }
 
   async getMetrics(): Promise<string> {

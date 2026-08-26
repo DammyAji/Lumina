@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Payment, PaymentCurrency, PaymentStatus } from './entities/payment.entity';
@@ -8,7 +8,10 @@ import { ConversionEngineService } from '../conversion-engine/conversion-engine.
 import { ConversionAsset } from '../conversion-engine/asset.enum';
 import { PaymentException } from '../common/exceptions';
 import { MetricsService } from '../common/metrics/metrics.service';
-import { TracingService } from '../common/tracing/tracing.service';
+import { EventPublisherService } from '../websocket/services/event-publisher.service';
+import { WebSocketEventType } from '../websocket/enums/websocket-event.enum';
+import { OfflineBufferService } from '../websocket/services/offline-buffer.service';
+import { ConnectionManagerService } from '../websocket/services/connection-manager.service';
 import { trace, SpanStatusCode } from '@opentelemetry/api';
 
 @Injectable()
@@ -23,7 +26,9 @@ export class PaymentService {
     private merchantRepository: Repository<Merchant>,
     private conversionEngineService: ConversionEngineService,
     private metricsService: MetricsService,
-    private tracingService: TracingService,
+    @Optional() private readonly eventPublisher?: EventPublisherService,
+    @Optional() private readonly offlineBuffer?: OfflineBufferService,
+    @Optional() private readonly connectionManager?: ConnectionManagerService,
   ) {}
 
   async create(createPaymentDto: CreatePaymentDto): Promise<Payment> {
@@ -33,7 +38,6 @@ export class PaymentService {
         span.setAttribute('payment.amount', createPaymentDto.amount);
         span.setAttribute('payment.currency', createPaymentDto.currency);
 
-        // Merchant validation sub-span
         const merchant = await this.tracer.startActiveSpan('payment.validate_merchant', async (validationSpan) => {
           const merchant = await this.merchantRepository.findOne({
             where: { stellar_address: createPaymentDto.merchant_address },
@@ -56,10 +60,9 @@ export class PaymentService {
           ...createPaymentDto,
           status: PaymentStatus.PENDING,
           payment_id: this.generatePaymentId(),
-          expires_at: new Date(Date.now() + 30 * 60 * 1000), // 30 minutes
+          expires_at: new Date(Date.now() + 30 * 60 * 1000),
         });
 
-        // Database save sub-span
         const savedPayment = await this.tracer.startActiveSpan('payment.save', async (saveSpan) => {
           const saved = await this.paymentRepository.save(payment);
           saveSpan.setAttribute('payment.id', saved.payment_id);
@@ -72,12 +75,13 @@ export class PaymentService {
         span.setAttribute('payment.id', savedPayment.payment_id);
         span.setAttribute('payment.status', savedPayment.status);
 
+        await this.publishPaymentEvent(WebSocketEventType.PAYMENT_CREATED, savedPayment, merchant.id);
+
         if (savedPayment.currency !== PaymentCurrency.USDC) {
-          // Conversion sub-span
           await this.tracer.startActiveSpan('payment.trigger_conversion', async (conversionSpan) => {
             conversionSpan.setAttribute('conversion.from', savedPayment.currency);
             conversionSpan.setAttribute('conversion.to', 'USDC');
-            
+
             this.conversionEngineService
               .executeConversion(
                 savedPayment.payment_id,
@@ -90,7 +94,7 @@ export class PaymentService {
                   `Conversion failed for payment ${savedPayment.payment_id}: ${error.message}`,
                 );
               });
-            
+
             conversionSpan.end();
           });
         }
@@ -141,7 +145,63 @@ export class PaymentService {
 
     const updatedPayment = await this.paymentRepository.save(payment);
     this.metricsService.recordPayment(updatedPayment.currency, updatedPayment.status, updatedPayment.amount);
+
+    const merchant = await this.merchantRepository.findOne({
+      where: { stellar_address: updatedPayment.merchant_address },
+    });
+
+    const eventType = this.mapStatusToEvent(status);
+    if (eventType) {
+      await this.publishPaymentEvent(eventType, updatedPayment, merchant?.id);
+    }
+
     return updatedPayment;
+  }
+
+  private mapStatusToEvent(status: PaymentStatus): WebSocketEventType | null {
+    switch (status) {
+      case PaymentStatus.CONFIRMED:
+        return WebSocketEventType.PAYMENT_CONFIRMED;
+      case PaymentStatus.FAILED:
+        return WebSocketEventType.PAYMENT_FAILED;
+      case PaymentStatus.EXPIRED:
+        return WebSocketEventType.PAYMENT_FAILED;
+      case PaymentStatus.PENDING:
+        return WebSocketEventType.PAYMENT_CREATED;
+      default:
+        return null;
+    }
+  }
+
+  private async publishPaymentEvent(
+    type: WebSocketEventType,
+    payment: Payment,
+    merchantId?: string,
+  ): Promise<void> {
+    if (!this.eventPublisher) return;
+
+    try {
+      const event = await this.eventPublisher.publish(type, {
+        payment_id: payment.payment_id,
+        merchant_id: merchantId,
+        merchant_address: payment.merchant_address,
+        amount: Number(payment.amount),
+        currency: payment.currency,
+        status: payment.status,
+        transaction_hash: payment.transaction_hash,
+      });
+
+      if (merchantId && this.offlineBuffer && this.connectionManager) {
+        const live = this.connectionManager.getAll().some((c) => c.merchantId === merchantId);
+        if (!live) {
+          this.offlineBuffer.buffer(merchantId, event);
+        }
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Failed to publish WebSocket event ${type} for ${payment.payment_id}: ${(error as Error).message}`,
+      );
+    }
   }
 
   private generatePaymentId(): string {

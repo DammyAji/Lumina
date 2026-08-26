@@ -24,6 +24,8 @@
     "types": ["node", "jest"]
   },
   "exclude": [
+    "dist",
+    "node_modules",
     "**/*.e2e-spec.ts",
     "**/*.spec.ts",
     "**/*.load-test.ts",
