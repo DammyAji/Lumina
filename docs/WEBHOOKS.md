@@ -116,7 +116,7 @@ func VerifyLuminaSignature(rawBody, signature, timestamp, secret string) bool {
 
 ## 3. Intelligent Retry & Backoff Policy
 
-Lumina uses an exponential backoff schedule for transient errors (HTTP `408`, `429`, `500`, `502`, `503`, `504` or connection timeouts).
+Lumina uses BullMQ for job queuing with exponential backoff schedule for transient errors (HTTP `408`, `429`, `500`, `502`, `503`, `504` or connection timeouts).
 
 - **Initial Delay**: 1 second
 - **Backoff Multiplier**: 2x
@@ -156,3 +156,65 @@ Subscriptions support rule-based event filters:
 }
 ```
 Webhooks will only be delivered if all configured filter criteria match the event payload.
+
+---
+
+## 6. Rate Limiting & Payload Size Limits
+
+### Rate Limiting
+Each webhook endpoint is rate-limited to **100 requests per minute** to prevent overwhelming target servers. Rate limiting is implemented using Redis with a sliding window counter.
+
+### Payload Size Limits
+Webhook payloads are limited to **1MB** in size. Payloads exceeding this limit will be rejected and logged.
+
+---
+
+## 7. Advanced Analytics
+
+The webhook statistics endpoint (`GET /api/webhooks/stats`) provides comprehensive delivery analytics:
+
+```json
+{
+  "total_webhooks": 10,
+  "active_webhooks": 8,
+  "total_deliveries": 15000,
+  "successful_deliveries": 14250,
+  "failed_deliveries": 500,
+  "pending_retries": 250,
+  "dlq_count": 50,
+  "success_rate": 95.0,
+  "avg_latency_ms": 245.5,
+  "p95_latency_ms": 512.3,
+  "p99_latency_ms": 1024.7,
+  "deliveries_by_event": {
+    "payment.confirmed": 8000,
+    "payment.failed": 4000,
+    "payment.created": 3000
+  },
+  "deliveries_by_status": {
+    "success": 14250,
+    "failed": 500,
+    "retrying": 250
+  }
+}
+```
+
+---
+
+## 8. Infrastructure & Performance
+
+### Job Queue (BullMQ)
+- Webhook deliveries are processed using BullMQ with Redis backend
+- Connection pooling with keep-alive enabled (max 100 sockets)
+- Automatic retry with exponential backoff
+- Job cleanup: 1000 completed jobs, 5000 failed jobs retained
+
+### Monitoring
+- Queue depth monitoring via Prometheus metrics
+- Real-time delivery metrics (success/failure rates, latency)
+- Alerting for high failure rates
+
+### Batch Processing
+- Batch webhook delivery supports up to 100 webhooks per batch
+- Parallel processing with worker pool
+- Optimized for high-volume delivery scenarios
