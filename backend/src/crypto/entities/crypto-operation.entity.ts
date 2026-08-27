@@ -14,6 +14,10 @@ export class CryptoOperation {
   @PrimaryColumn('uuid')
   id: string;
 
+  @Index()
+  @Column({ nullable: true })
+  tenant_id: string;
+
   @Column({ type: 'uuid', nullable: true })
   @Index()
   keyId: string;

@@ -14,6 +14,10 @@ export class FraudRule {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
+  @Index()
+  @Column({ nullable: true })
+  tenant_id: string;
+
   @Column({ nullable: true })
   merchant_id: string;
 

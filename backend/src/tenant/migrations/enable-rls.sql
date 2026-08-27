@@ -224,6 +224,36 @@ CREATE POLICY tenant_isolation_rate_limit_violations ON rate_limit_violations
     tenant_id = current_setting('app.current_tenant_id', true)::UUID
   );
 
+-- Create indexes for tenant_id columns if they don't exist
+CREATE INDEX IF NOT EXISTS idx_users_tenant_id ON users(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_payments_tenant_id ON payments(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_merchants_tenant_id ON merchants(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_api_keys_tenant_id ON api_keys(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_webhooks_tenant_id ON webhooks(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_tenant_id ON webhook_deliveries(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_webhook_dlq_tenant_id ON webhook_dlq(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_conversions_tenant_id ON conversions(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_crypto_operations_tenant_id ON crypto_operations(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_ramp_operations_tenant_id ON ramp_operations(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_bank_accounts_tenant_id ON bank_accounts(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_kyc_records_tenant_id ON kyc_records(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_ledger_entries_tenant_id ON ledger_entries(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_reconciliation_reports_tenant_id ON reconciliation_reports(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_fraud_rules_tenant_id ON fraud_rules(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_rule_evaluations_tenant_id ON rule_evaluations(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_rule_analytics_tenant_id ON rule_analytics(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_rule_versions_tenant_id ON rule_versions(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_anomaly_alerts_tenant_id ON anomaly_alerts(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_analytics_metrics_tenant_id ON analytics_metrics(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_customer_analytics_tenant_id ON customer_analytics(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_revenue_forecasts_tenant_id ON revenue_forecasts(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_custom_reports_tenant_id ON custom_reports(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_zkp_proofs_tenant_id ON zkp_proofs(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_nullifiers_tenant_id ON nullifiers(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_audit_proofs_tenant_id ON audit_proofs(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_rate_limit_policies_tenant_id ON rate_limit_policies(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_rate_limit_violations_tenant_id ON rate_limit_violations(tenant_id);
+
 -- Create function to set tenant context
 CREATE OR REPLACE FUNCTION set_tenant_context(tenant_id UUID)
 RETURNS void AS $$

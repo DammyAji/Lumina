@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
 
 export enum WebhookDeliveryStatus {
   PENDING = 'pending',
@@ -12,6 +12,10 @@ export enum WebhookDeliveryStatus {
 export class WebhookDelivery {
   @PrimaryGeneratedColumn('uuid')
   id: string;
+
+  @Index()
+  @Column({ nullable: true })
+  tenant_id: string;
 
   @Column()
   webhook_id: string;

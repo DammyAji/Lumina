@@ -7,6 +7,7 @@ import { ApiGatewayModule } from './api-gateway/api-gateway.module';
 import { BlockchainListenerModule } from './blockchain-listener/blockchain-listener.module';
 import { NotificationServiceModule } from './notification-service/notification-service.module';
 import { ConversionEngineModule } from './conversion-engine/conversion-engine.module';
+import { CrossChainSwapModule } from './cross-chain-swap/cross-chain-swap.module';
 import { CommonModule } from './common/common.module';
 import { AuthModule } from './auth/auth.module';
 import { RampModule } from './ramp-service/ramp-service.module';
@@ -18,10 +19,13 @@ import { FraudDetectionModule } from './fraud-detection/fraud-detection.module';
 import { RateLimitModule } from './rate-limit/rate-limit.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { TenantModule } from './tenant/tenant.module';
+import { EscrowModule } from './escrow/escrow.module';
+import { CacheModule } from './cache/cache.module';
 import { MetricsService } from './common/metrics/metrics.service';
 import { TypeOrmMetricsLogger } from './common/metrics/typeorm-metrics.logger';
 import { DbPoolMetricsService } from './common/metrics/db-pool-metrics.service';
 import { TracingModule } from './common/tracing/tracing.module';
+import { WebsocketModule } from './websocket/websocket.module';
 
 @Module({
   imports: [
@@ -61,10 +65,13 @@ import { TracingModule } from './common/tracing/tracing.module';
     RateLimitModule,
     AnalyticsModule,
     PaymentModule,
+    EscrowModule,
     ApiGatewayModule,
     BlockchainListenerModule,
     NotificationServiceModule,
     ConversionEngineModule,
+    CrossChainSwapModule,
+    WebsocketModule,
   ],
   providers: [DbPoolMetricsService],
 })

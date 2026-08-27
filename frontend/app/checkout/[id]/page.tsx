@@ -7,6 +7,7 @@ import CryptoSelector, { CryptoCurrency } from '@/components/checkout/CryptoSele
 import WalletConnector from '@/components/checkout/WalletConnector';
 import QRCode from '@/components/checkout/QRCode';
 import StatusIndicator, { PaymentStatus } from '@/components/checkout/StatusIndicator';
+import { usePaymentWebSocket } from '@/hooks/usePaymentWebSocket';
 
 interface PaymentData {
   id: string;
@@ -105,28 +106,48 @@ export default function CheckoutPage() {
     fetchPaymentData();
   }, [paymentId]);
 
-  // Poll for payment status updates
+  // Real-time payment status via WebSocket (replaces REST polling)
+  const wsToken =
+    typeof window !== 'undefined'
+      ? window.localStorage.getItem('lumina_access_token') || undefined
+      : undefined;
+
+  const { status: wsStatus, event: wsEvent, error: wsError, connected: wsConnected } =
+    usePaymentWebSocket(paymentId, {
+      token: wsToken,
+      enabled: !!paymentData && !['completed', 'failed', 'expired'].includes(paymentData.status),
+    });
+
   useEffect(() => {
-    if (!paymentData || paymentData.status === 'completed' || paymentData.status === 'failed' || paymentData.status === 'expired') {
-      return;
+    if (!wsStatus) return;
+
+    const mapped: PaymentStatus =
+      wsStatus === 'confirmed' || wsStatus === 'completed'
+        ? 'completed'
+        : wsStatus === 'failed'
+          ? 'failed'
+          : wsStatus === 'expired'
+            ? 'expired'
+            : 'pending';
+
+    setPaymentData((prev) => {
+      if (!prev) return prev;
+      const nextHash =
+        (wsEvent?.data.transaction_hash as string | undefined) || prev.transactionHash;
+      if (prev.status === mapped && prev.transactionHash === nextHash) return prev;
+      return {
+        ...prev,
+        status: mapped,
+        transactionHash: nextHash,
+      };
+    });
+  }, [wsStatus, wsEvent]);
+
+  useEffect(() => {
+    if (wsError) {
+      console.warn('WebSocket payment stream error:', wsError, 'connected=', wsConnected);
     }
-
-    const pollInterval = setInterval(async () => {
-      try {
-        // Replace with actual API call:
-        // const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/payments/${paymentId}/status`);
-        // const data = await response.json();
-        // setPaymentData(prev => ({ ...prev, status: data.status, transactionHash: data.transactionHash }));
-        
-        // Mock status update for demo
-        // In production, this would come from the API
-      } catch (error) {
-        console.error('Failed to poll payment status:', error);
-      }
-    }, 5000); // Poll every 5 seconds
-
-    return () => clearInterval(pollInterval);
-  }, [paymentData, paymentId]);
+  }, [wsError, wsConnected]);
 
   // Redirect based on payment status
   useEffect(() => {
