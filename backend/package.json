@@ -10,7 +10,9 @@
     "start:prod": "node dist/main.js",
     "test": "jest",
     "test:watch": "jest --watch",
-    "test:cov": "jest --coverage"
+    "test:cov": "jest --coverage",
+    "docs:export": "ts-node scripts/export-openapi.ts",
+    "docs:serve": "echo 'Start the server first, then visit http://localhost:4000/api/docs'"
   },
   "keywords": [],
   "author": "",
